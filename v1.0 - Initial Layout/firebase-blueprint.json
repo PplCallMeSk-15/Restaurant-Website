@@ -1,0 +1,158 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Table": {
+      "title": "Table",
+      "description": "Physical restaurant table",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "capacity": { "type": "number" },
+        "status": { "type": "string", "enum": ["free", "booked", "occupied"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "capacity", "status"]
+    },
+    "MenuItem": {
+      "title": "Menu Item",
+      "description": "A food item in the restaurant menu",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "category": { "type": "string" },
+        "image": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "isAvailable": { "type": "boolean" },
+        "spicyLevel": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "price", "category", "isAvailable"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "A customer food order",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "price": { "type": "number" },
+              "quantity": { "type": "integer" }
+            }
+          }
+        },
+        "total": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "preparing", "delivered", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "customerName": { "type": "string" },
+        "customerEmail": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "address": { "type": "string" }
+      },
+      "required": ["userId", "items", "total", "status", "createdAt"]
+    },
+    "Reservation": {
+      "title": "Reservation",
+      "description": "A table reservation",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "guests": { "type": "integer" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled", "completed", "seated", "no-show"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "seenByGuest": { "type": "boolean" }
+      },
+      "required": ["userId", "name", "date", "time", "guests", "status"]
+    },
+    "AppSettings": {
+      "title": "App Settings",
+      "description": "Global store configuration",
+      "type": "object",
+      "properties": {
+        "restaurantName": { "type": "string" },
+        "address": { "type": "string" },
+        "contactNumber": { "type": "string" },
+        "maxPartySize": { "type": "integer" },
+        "useManualTime": { "type": "boolean" },
+        "manualDate": { "type": "string" },
+        "manualTime": { "type": "string" },
+        "manualTimeSetAt": { "type": "number" },
+        "timeSlots": { "type": "array" }
+      }
+    },
+    "EmailLog": {
+      "title": "Email Log",
+      "description": "An audit log of all emails dispatched",
+      "type": "object",
+      "properties": {
+        "recipientEmail": { "type": "string" },
+        "recipientName": { "type": "string" },
+        "subject": { "type": "string" },
+        "emailType": { "type": "string" },
+        "status": { "type": "string", "enum": ["success", "failed", "abandoned"] },
+        "errorMessage": { "type": "string" },
+        "sentAt": { "type": "string" },
+        "orderId": { "type": "string" },
+        "reservationId": { "type": "string" },
+        "isMockMode": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["recipientEmail", "subject", "emailType", "status", "sentAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/menu_items/{itemId}": {
+      "schema": "MenuItem",
+      "description": "Menu items"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Customer orders"
+    },
+    "/reservations/{reservationId}": {
+      "schema": "Reservation",
+      "description": "Table bookings"
+    },
+    "/tables/{tableId}": {
+      "schema": "Table",
+      "description": "Seating map and real-time status"
+    },
+    "/settings/{docId}": {
+      "schema": "AppSettings",
+      "description": "Global application configuration"
+    },
+    "/email_logs/{logId}": {
+      "schema": "EmailLog",
+      "description": "Email dispatch audit trails"
+    }
+  }
+}

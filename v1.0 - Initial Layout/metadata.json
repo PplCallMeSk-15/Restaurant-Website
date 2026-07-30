@@ -1,0 +1,6 @@
+{
+  "name": "Spice Garden Restaurant",
+  "description": "A premium full-stack restaurant management system with online ordering, table reservations, and a comprehensive admin panel.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,239 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'google.com');
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.uid == 'system-automation-runner' ||
+        request.auth.token.email == 'example@gmail.com' ||
+        request.auth.token.email == 'admin@gmail.com' ||
+        request.auth.uid == 'dfyhJetRbNaJzOhL0iK1FOoKaZ82' || 
+        request.auth.uid == '81qtVQlViDfWr6011rWjiJozR7i1' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Helpers ---
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid is string && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() <= 256 &&
+             data.role in ['user', 'admin'] &&
+             (!data.keys().hasAny(['displayName']) || (data.displayName is string || data.displayName == null)) &&
+             (!data.keys().hasAny(['photoURL']) || (data.photoURL is string || data.photoURL == null)) &&
+             (!data.keys().hasAny(['phoneNumber']) || (data.phoneNumber is string || data.phoneNumber == null)) &&
+             (!data.keys().hasAny(['phone']) || (data.phone is string || data.phone == null));
+    }
+
+    function isValidMenuItem(data) {
+      return data.keys().hasAll(['name', 'price', 'category', 'isAvailable']) &&
+             data.name is string && data.name.size() <= 100 &&
+             data.price is number && data.price >= 0 &&
+             data.category is string && data.category.size() <= 50 &&
+             data.isAvailable is bool;
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['userId', 'items', 'total', 'status', 'createdAt']) &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.items is list && data.items.size() > 0 &&
+             data.total is number && data.total >= 0 &&
+             data.status in ['pending', 'confirmed', 'preparing', 'delivered', 'cancelled', 'Order Received', 'Accepted', 'Ready For Delivery', 'Assigned To Delivery Partner', 'Picked Up', 'On The Way'];
+    }
+
+    function isValidReservation(data) {
+      return data.keys().hasAll(['userId', 'date', 'time', 'guests', 'status', 'createdAt']) &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.date is string && data.time is string &&
+             data.guests is number && data.guests > 0 && data.guests <= 100 &&
+             data.status in ['pending', 'confirmed', 'cancelled', 'rejected', 'completed', 'seated', 'no-show'] &&
+             (!data.keys().hasAny(['name']) || data.name is string) &&
+             (!data.keys().hasAny(['email']) || (data.email is string || data.email == null)) &&
+             (!data.keys().hasAny(['phone']) || (data.phone is string || data.phone == null));
+    }
+
+    function isValidTable(data) {
+      return data.keys().hasAll(['name', 'capacity', 'status']) &&
+             data.name is string && data.name.size() <= 50 &&
+             data.capacity is number && data.capacity > 0 && data.capacity <= 100 &&
+             data.status in ['free', 'booked', 'occupied'];
+    }
+
+    function isValidOtp(data) {
+      return data.keys().hasAll(['email', 'otp', 'expiresAt', 'cooldownUntil', 'attempts']) &&
+             data.email is string && data.email.size() <= 256 &&
+             data.otp is string && data.otp.size() == 6 &&
+             data.expiresAt is number && data.cooldownUntil is number && data.attempts is number;
+    }
+
+    function isValidDeliveryStatusLog(data) {
+      return data.keys().hasAll(['orderId', 'status', 'updatedBy']) &&
+             data.orderId is string &&
+             data.status is string &&
+             data.updatedBy in ['customer', 'admin', 'partner'];
+    }
+
+    function isValidDeliveryTracking(data) {
+      return data.keys().hasAll(['orderId', 'partnerId', 'latitude', 'longitude']) &&
+             data.orderId is string &&
+             data.partnerId is string &&
+             data.latitude is number &&
+             data.longitude is number;
+    }
+
+    // --- Core Match Rules ---
+
+    // 1. Connection and Settings
+    match /test/connection {
+      allow read: if true;
+    }
+
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 2. Tables Seating Map
+    match /tables/{tableId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidTable(incoming());
+      allow update: if isAdmin() || (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['status']));
+      allow delete: if isAdmin();
+    }
+
+    // 3. User Accounts
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().role == 'user';
+      allow update: if isOwner(userId) && 
+                    isValidUser(incoming()) && 
+                    incoming().role == existing().role && 
+                    incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoURL', 'phoneNumber', 'phone', 'updatedAt']);
+      allow write: if isAdmin() || (isOwner(userId) && (request.auth.token.email == 'admin@gmail.com' || request.auth.token.email == 'example@gmail.com'));
+    }
+
+    // 4. Restaurant Menu
+    match /menu_items/{itemId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidMenuItem(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 5. Customer Orders
+    match /orders/{orderId} {
+      allow read, update: if true;
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid && isValidOrder(incoming()) && incoming().createdAt == request.time;
+      allow delete: if isAdmin();
+    }
+
+    // 6. Table Bookings & Reservations
+    match /reservations/{reservationId} {
+      allow get: if isSignedIn() && (isOwner(existing().userId) || isAdmin());
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidReservation(incoming()) && incoming().userId == request.auth.uid && incoming().createdAt == request.time;
+      allow update: if (isAdmin() && isValidReservation(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'assignedTables', 'seenByGuest'])) ||
+                    (isSignedIn() && isOwner(existing().userId) && (
+                      incoming().diff(existing()).affectedKeys().hasOnly(['seenByGuest']) ||
+                      (incoming().status == 'cancelled' && incoming().diff(existing()).affectedKeys().hasOnly(['status']))
+                    ));
+      allow delete: if isAdmin();
+    }
+
+    // 7. System Notifications
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow update, delete: if isAdmin() || (isSignedIn() && isOwner(existing().userId));
+    }
+
+    // 8. Delivery Partners
+    match /delivery_partners/{partnerId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // 9. Delivery Telemetry & Core Tracking Logs
+    match /delivery_status_logs/{logId} {
+      allow read: if true;
+      allow create: if isValidDeliveryStatusLog(incoming()) || isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    match /delivery_assignments/{assignId} {
+      allow read: if true;
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+        incoming().status in ['assigned', 'order_received', 'accepted', 'ready_for_delivery', 'assigned_to_delivery_partner', 'picked_up', 'on_the_way', 'delivered', 'cancelled']
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /delivery_tracking/{trackId} {
+      allow read: if true;
+      allow create: if isValidDeliveryTracking(incoming()) || isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // 10. Reviews & Customer Feedback
+    match /feedback/{feedbackId} {
+      allow read: if isAdmin();
+      allow create: if true;
+      allow update, delete: if isAdmin();
+    }
+
+    // 11. Profile Setup Auxiliary
+    match /user_profiles/{profileId} {
+      allow read: if isOwner(profileId) || isAdmin();
+      allow write: if isOwner(profileId) || isAdmin();
+    }
+
+    // 12. OTP Verification Tokens
+    match /otp_verifications/{verificationId} {
+      allow read, write: if isAdmin() || (request.auth != null && request.auth.token.email == 'admin@gmail.com');
+    }
+
+    // 13. Registered Email Accounts Directory
+    match /registered_emails/{email} {
+      allow get, create: if true;
+      allow update: if (isSignedIn() && (incoming().uid == request.auth.uid || existing().uid == request.auth.uid)) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // 14. Transactional Mail Dispatch Logs
+    match /email_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+  }
+}
